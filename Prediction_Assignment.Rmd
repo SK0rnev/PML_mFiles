@@ -1,0 +1,100 @@
+---
+title: "PML - Prediction Assigment"
+author: "SK"
+date: "July 26, 2014"
+output: html_document
+---
+
+## Housekeeping
+Preapre environment for analysis
+```{r, message=F, warning=F}
+library(randomForest)
+library(caret)
+library(rpart)
+library(ElemStatLearn)
+set.seed(1972)
+getwd()
+```
+
+## Data Processing and Cleaning
+Read data files and remove IDs and classification column for testing data
+```{r, message=F, warning=F}
+m.training <- read.csv("pml-training.csv", header=TRUE, sep=",", na.strings=c("NA",""))
+m.training<-m.training[,-1]
+m.testing <- read.csv("pml-testing.csv", header=TRUE, sep=",", na.strings=c("NA",""))
+m.testing<-m.testing[,-1]
+m.testing <- m.testing[,-ncol(m.testing)]
+```
+
+Check number of columns with NAS
+```{r, message=F, warning=F}
+tr.NAs <- numeric()
+for (i in 1:ncol(m.training)) {
+  tr.NAs<-c(tr.NAs,sum(is.na(m.training[,i])))
+  }
+tr.NAs
+te.NAs <- numeric()
+for (i in 1:ncol(m.testing)) {
+  te.NAs<-c(te.NAs,sum(is.na(m.testing[,i])))
+  }
+te.NAs
+```
+
+Remove columns with NAs
+```{r, message=F, warning=F}
+woNAs.tr<-c(tr.NAs==0)
+woNAs.te<-c(te.NAs==0)
+m.training<-m.training[,woNAs.tr]
+m.testing<-m.testing[,woNAs.te]
+```
+
+Create training and validating sets
+```{r, message=F, warning=F}
+inTrain = createDataPartition(m.training$classe, p=0.60, list=FALSE)
+m.training<-m.training[inTrain,]
+m.validating<-m.training[-inTrain,]
+```
+
+Run cross-validation. Calculate The Best Tune of number of variable randomly sampled.
+```{r, message=F, warning=F}
+fitControl = trainControl( method = "cv", number = 2)
+cv <- train(classe ~ ., data = m.training, method = "rf", trControl = fitControl)
+cv$bestTune$mtry
+```
+
+## Build random forest model
+```{r, message=F, warning=F}
+mRF.model <- randomForest(classe~.,data=m.training,  mtry = cv$bestTune$mtry)
+print(mRF.model)
+```
+
+The OOB estimate of error rate is 0.12%. Check it on validating data
+```{r, message=F, warning=F}
+confusionMatrix(predict(mRF.model,newdata=m.validating[,-ncol(m.validating)]), m.validating$classe)
+acc.val<-c(as.numeric(predict(mRF.model,newdata=m.validating[,-ncol(m.validating)])==m.validating$classe))
+acc.val<-sum(acc.val)*100/nrow(m.validating)
+acc.val
+```
+
+## Predict testing data for submission (+ fix difference in data type)
+```{r, message=F, warning=F}
+m.testing <- rbind(m.training[100, -59] , m.testing)
+ForSubmission = predict(mRF.model, newdata = m.testing[-1,])
+ForSubmission
+```
+
+## Prepare Files for Submission
+```{r, message=F, warning=F}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_", i ,".txt")
+    write.table(x[i], file = filename, quote = FALSE,
+                row.names = FALSE, col.names = FALSE)
+  }
+}
+pml_write_files(ForSubmission)
+```
+
+DONE
+
